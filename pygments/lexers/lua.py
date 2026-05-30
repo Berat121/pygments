@@ -630,11 +630,10 @@ class MoonScriptLexer(LuaLexer):
 
 class LuaJITLexer(LuaLexer):
     """
-    For `LuaJIT <https://luajit.org/>`_ source code.
+    For LuaJIT source code (https://luajit.org/).
 
-    LuaJIT extends Lua 5.1 with 64-bit integer literals (``1LL``, ``1ULL``),
-    complex/imaginary literals (``1i``), ``goto``/label syntax, and the
-    ``ffi``, ``bit``, and ``jit`` built-in modules.
+    LuaJIT extends Lua 5.1 with 64-bit integer literals (1LL, 0xFFULL),
+    imaginary literals (1i), goto/label syntax, and ffi/bit/jit modules.
 
     .. versionadded:: 2.21
     """
@@ -645,6 +644,35 @@ class LuaJITLexer(LuaLexer):
     filenames = ['*.lj']
     mimetypes = ['text/x-luajit']
     version_added = '2.21'
+
+    _LUAJIT_MODULES = frozenset([
+        'ffi', 'bit', 'jit',
+        'ffi.C', 'ffi.cdef', 'ffi.load', 'ffi.new', 'ffi.typeof', 'ffi.cast',
+        'ffi.metatype', 'ffi.gc', 'ffi.string', 'ffi.copy', 'ffi.fill',
+        'ffi.sizeof', 'ffi.alignof', 'ffi.offsetof', 'ffi.istype',
+        'ffi.errno', 'ffi.os', 'ffi.arch', 'ffi.abi',
+        'bit.tobit', 'bit.tohex', 'bit.bnot', 'bit.band', 'bit.bor',
+        'bit.bxor', 'bit.lshift', 'bit.rshift', 'bit.arshift',
+        'bit.rol', 'bit.ror', 'bit.bswap',
+        'jit.on', 'jit.off', 'jit.flush', 'jit.status',
+        'jit.version', 'jit.os', 'jit.arch',
+    ])
+
+    def get_tokens_unprocessed(self, text):
+        import re as _re
+        _LL = _re.compile(r'(0[xX][0-9a-fA-F]+|\d+)([uU]?[lL]{1,2}|[ij])')
+        for index, token, value in LuaLexer.get_tokens_unprocessed(self, text):
+            if token is Name and value in self._LUAJIT_MODULES:
+                yield index, Name.Builtin, value
+            elif token in (Number.Integer, Number.Hex, Number.Float):
+                m = _LL.fullmatch(value)
+                if m:
+                    yield index, token, m.group(1)
+                    yield index + len(m.group(1)), Number.Integer.Long, m.group(2)
+                else:
+                    yield index, token, value
+            else:
+                yield index, token, value
 
 
 
@@ -664,14 +692,14 @@ class TealLexer(RegexLexer):
 
     tokens = {
         'root': [
-            (r'--\[([=]*)\[.*?\]\1\]', Comment.Multiline),
+            (r'--\\[([=]*)\\[.*?\\]\\1\\]', Comment.Multiline),
             (r'--.*?$', Comment.Single),
-            (r'(?s)(\[([=]*)\[.*?\]\2\])', String),
-            (r'"', String.Double, 'string_double'),
-            (r"'", String.Single, 'string_single'),
+            (r'(?s)(\\[([=]*)\\[.*?\\]\\2\\])', String),
+            (r'\"', String.Double, 'string_double'),
+            (r"\'", String.Single, 'string_single'),
             (r'0[xX][0-9a-fA-F]+', Number.Hex),
-            (r'\d+\.\d*([eE][+-]?\d+)?', Number.Float),
-            (r'\d+', Number.Integer),
+            (r'\\d+\\.\\d*([eE][+-]?\\d+)?', Number.Float),
+            (r'\\d+', Number.Integer),
             (words((
                 'and', 'break', 'do', 'else', 'elseif', 'end',
                 'false', 'for', 'function', 'goto', 'if', 'in',
@@ -679,20 +707,20 @@ class TealLexer(RegexLexer):
                 'then', 'true', 'until', 'while',
                 # Teal type keywords
                 'global', 'record', 'enum', 'where', 'type', 'as', 'is',
-            ), suffix=r'\b'), Keyword),
-            (r'[+\-*/%^#&~|<>=(){}\[\];:,.]', Punctuation),
-            (r'[a-zA-Z_]\w*', Name),
-            (r'\s+', Whitespace),
+            ), suffix=r'\\b'), Keyword),
+            (r'[+\\-*/%^#&~|<>=(){}\\[\\];:,.]', Punctuation),
+            (r'[a-zA-Z_]\\w*', Name),
+            (r'\\s+', Whitespace),
         ],
         'string_double': [
-            (r'[^"\\\n]+', String.Double),
-            (r'\\.', String.Escape),
-            (r'"', String.Double, '#pop'),
+            (r'[^"\\\\\\n]+', String.Double),
+            (r'\\\\.', String.Escape),
+            (r'\"', String.Double, '#pop'),
         ],
         'string_single': [
-            (r"[^'\\\n]+", String.Single),
-            (r'\\.', String.Escape),
-            (r"'", String.Single, '#pop'),
+            (r"[^'\\\\\\n]+", String.Single),
+            (r'\\\\.', String.Escape),
+            (r"\'", String.Single, '#pop'),
         ],
     }
 
@@ -714,15 +742,15 @@ class FennelLexer(RegexLexer):
 
     tokens = {
         'root': [
-            (r'\s+', Whitespace),
+            (r'\\s+', Whitespace),
             (r';.*$', Comment.Single),
-            (r'#\|', Comment.Multiline, 'block_comment'),
+            (r'#\\|', Comment.Multiline, 'block_comment'),
             (r'~@|['`~^@]', Operator),
             (r'0[xX][0-9a-fA-F]+', Number.Hex),
-            (r'\d+\.\d*([eE][+-]?\d+)?', Number.Float),
-            (r'\d+', Number.Integer),
-            (r'"', String, 'string'),
-            (r'\:[\.\w#$%&*+\-/<=>?@!^|~]+', Name.Constant),
+            (r'\\d+\\.\\d*([eE][+-]?\\d+)?', Number.Float),
+            (r'\\d+', Number.Integer),
+            (r'\"', String, 'string'),
+            (r'\\:[\\.\\w#$%&*+\\-/<=>?@!^|~]+', Name.Constant),
             (words((
                 'fn', 'lambda', 'λ', 'let', 'let*', 'local', 'global',
                 'set', 'tset', 'do', 'if', 'when', 'unless', 'while',
@@ -732,19 +760,19 @@ class FennelLexer(RegexLexer):
                 'require-macros', 'include', 'lua',
                 'and', 'or', 'not', 'true', 'false', 'nil',
                 'values', '...',
-            ), suffix=r'(?=[\s()])'), Keyword),
-            (r'[()\[\]{}\']', Punctuation),
-            (r'[\.\w#$%&*+\-/<=>?@!^|~]+', Name),
+            ), suffix=r'(?=[\\s()])'), Keyword),
+            (r'[()\\[\\]{}\\\']', Punctuation),
+            (r'[\\.\\w#$%&*+\\-/<=>?@!^|~]+', Name),
         ],
         'string': [
-            (r'[^"\\]+', String),
-            (r'\\.', String.Escape),
-            (r'"', String, '#pop'),
+            (r'[^"\\\\]+', String),
+            (r'\\\\.', String.Escape),
+            (r'\"', String, '#pop'),
         ],
         'block_comment': [
             (r'[^|#]+', Comment.Multiline),
-            (r'\|#', Comment.Multiline, '#pop'),
-            (r'#\|', Comment.Multiline, '#push'),
+            (r'\\|#', Comment.Multiline, '#pop'),
+            (r'#\\|', Comment.Multiline, '#push'),
             (r'[|#]', Comment.Multiline),
         ],
     }
